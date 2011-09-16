@@ -3255,6 +3255,66 @@ class EscapistIE(InfoExtractor):
 			self._downloader.trouble(u'\nERROR: unable to download ' + videoId)
 
 
+class Direct8IE(InfoExtractor):
+	"""Information extractor for Direct8 """
+
+	_VALID_URL = r'^(http?://)?(www\.)?direct8.fr/video/\w+/(?:[^/]+)/$'
+	_CONFIG_URL = 'http://direct8.hexaglobe.com/player-vod-ads.js?asset='
+
+	def report_extraction(self):
+		self._downloader.to_screen(u'[direct8] : Extracting information')
+
+	def report_config_download(self, video):
+		self._downloader.to_screen(u'[direct8] %s: Downloading configuration' % video)
+
+	def _real_extract(self, url):
+		mobj = re.match(self._VALID_URL, url)
+		if mobj is None:
+			self._downloader.trouble(u'ERROR: invalid URL: %s' % url)
+			return
+
+		self.report_extraction()
+		try:
+			webPage = urllib2.urlopen(url).read()
+		except (urllib2.URLError, httplib.HTTPException, socket.error), err:
+			self._downloader.trouble(u'ERROR: unable to download webpage: ' + unicode(err))
+			return
+
+		assetMatch = re.search(r'asset=(\w+)\.flv', webPage, re.U)
+		if assetMatch is None:
+			self._downloader.trouble(u'ERROR: unable to extract video asset')
+			return
+
+		asset = assetMatch.group(1)
+		configUrl = self._CONFIG_URL + asset + '.flv'
+		self.report_config_download(asset)
+		try:
+			config = urllib2.urlopen(configUrl).read()
+		except (urllib2.URLError, httplib.HTTPException, socket.error), err:
+			self._downloader.trouble(u'ERROR: unable to download configuration: ' + unicode(err))
+			return
+
+		baseUrlMatch = re.search(r'baseUrl:.*\'(.*)\'', config)
+		if baseUrlMatch is None:
+			self._downloader.trouble(u'ERROR: unable to extract baseUrl')
+			return
+
+		videoUrl = baseUrlMatch.group(1) + asset + '.flv'
+		self._downloader.increment_downloads()
+		info = {
+			'id': asset,
+			'url': videoUrl,
+			'title': asset,
+			'ext': 'flv',
+			'format': 'flv',
+		}
+
+		try:
+			self._downloader.process_info(info)
+		except UnavailableVideoError, err:
+			self._downloader.trouble(u'\nERROR: unable to download ' + asset)
+
+
 
 class PostProcessor(object):
 	"""Post Processor class.
@@ -3644,6 +3704,7 @@ def gen_extractors():
 		MyVideoIE(),
 		ComedyCentralIE(),
 		EscapistIE(),
+		Direct8IE(),
 
 		GenericIE()
 	]
